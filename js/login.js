@@ -1,4 +1,9 @@
-/* Page de connexion — redirige vers home.html si déjà connecté. */
+/* Page de connexion — redirige vers home.html si déjà connecté.
+   Page d'accueil (déconnecté) : hero Clean Premium + carte démo réelle
+   (FMPF Anatomie, sujet « La région axillaire »
+   t0) + formulaire de connexion avec choix de la faculté
+   (chaque faculté a son propre compte et son propre abonnement — choisir
+   une autre faculté redirige vers son site). */
 import { initializeApp } from '../vendor/firebase/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, GoogleAuthProvider,
@@ -7,7 +12,26 @@ import {
   sendPasswordResetEmail
 } from '../vendor/firebase/firebase-auth.js';
 import { firebaseConfig } from '../firebase-config.js';
-import { $, toast } from './common.js';
+import { $, toast, esc } from './common.js';
+
+const FACULTIES = [
+  ['fmpr', 'FMPR · Rabat', 'fmpr.flashcartes.com'],
+  ['fmpa', 'FMPA · Agadir', 'fmpa.flashcartes.com'],
+  ['fmpt', 'FMPT · Tanger', 'fmpt.flashcartes.com'],
+  ['fmpc', 'FMPC · Casablanca', 'fmpc.flashcartes.com'],
+  ['fmpo', 'FMPO · Oujda', 'fmpo.flashcartes.com'],
+  ['fmpf', 'FMPF · Fès', 'fmpf.flashcartes.com'],
+  ['fmpm', 'FMPM · Marrakech', 'fmpm.flashcartes.com'],
+];
+
+/* Cartes démo réelles — sujet t0 « La région axillaire »,
+   Anatomie FMPF. Jamais de carte inventée :
+   question → réponse, tirées de disc-0.json. */
+const DEMO_CARDS = [
+  { q: "Qu'est-ce que la région axillaire ?", a: "C'est la région de passage entre le tronc et le membre supérieur, véritable hile du membre supérieur, de forme pyramidale quadrangulaire à sommet supéro-interne et base inféro-externe.", n: "1/30" },
+  { q: "Quelles sont les limites de la région axillaire ?", a: "En haut : tiers externe de la clavicule ; en bas : bord inférieur du grand pectoral ; en dedans : paroi antérolatérale du thorax ; en dehors : articulation scapulo-humérale ; en arrière : omoplate et région scapulo-humérale.", n: "2/30" },
+  { q: "Quelles sont les parois de la région axillaire ?", a: "Quatre parois : scapulaire (postérieure), pectorale (antérieure), humérale (latérale) et thoracique (médiale), plus une base (plancher) et un sommet.", n: "3/30" },
+];
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -18,11 +42,29 @@ function vLogin(err, mode) {
   mode = mode || 'login';
   const isSignup = mode === 'signup';
   $('#app').innerHTML = `
+    <section class="hero">
+      <p class="hero-eyebrow">Flashcartes · FMPF Fès</p>
+      <h1 class="hero-title">Tout le programme de ta faculté. En flashcards.</h1>
+      <p class="hero-sub">Connecte-toi pour retrouver ta progression, ton plan de la semaine et tes cartes à revoir.</p>
+      <div class="demo-flip" id="demoFlip">
+        <div class="demo-flip-head"><span>Aperçu — tap pour retourner</span><span id="demoCount">1 / 3</span></div>
+        <div class="demo-card" id="demoCard" role="button" tabindex="0" aria-label="Carte démo, tap pour retourner">
+          <div class="demo-face demo-front" id="demoFront"></div>
+          <div class="demo-face demo-back" id="demoBack" hidden></div>
+        </div>
+        <button class="btn btn-gold" id="demoNext" type="button">Nouvelle carte →</button>
+        <p class="demo-src" id="demoSrc"></p>
+      </div>
+      <div class="hero-stats"><span><b>625</b> sujets</span><span><b>18 750</b> cartes</span><span><b>100 DH</b> à vie</span></div>
+    </section>
     <div class="login-wrap">
     <div class="login-card">
-      <div class="login-logo"><img src="fmpf-logo-circle.jpg" alt="FMPF" style="width:96px;height:96px;border-radius:50%;object-fit:cover"></div>
-      <h1>Flashcards FMPF</h1>
-      <p class="login-sub">Faculté de Médecine et de Pharmacie de Fès<br>18 750 flashcards · classement<br>Ta progression sauvegardée partout.</p>
+      <div class="login-logo" aria-hidden="true"><img src="icon-512.png" alt="Flashcards" width="56" height="56"></div>
+      <h1>${isSignup ? 'Créer ton compte FMPF' : 'Bon retour'}</h1>
+      <p class="login-sub">Choisis ta faculté, puis ${isSignup ? 'crée ton compte' : 'connecte-toi'} pour reprendre où tu t’étais arrêté.<br><b>625 sujets · 18 750 cartes</b> · classement</p>
+      <label class="fld"><span>Faculté</span>
+        <select class="input" id="facSel">${FACULTIES.map(([code, label]) => `<option value="${code}"${code === 'fmpf' ? ' selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="fld-note">Chaque faculté a son propre compte et son propre abonnement — choisis la tienne pour te connecter au bon espace.</span></label>
       <button class="btn btn-google" id="gBtn">${G_LOGO}<span>Continuer avec Google</span></button>
       <div class="hr">ou par email</div>
       <label class="fld"><span>Email</span>
@@ -38,9 +80,40 @@ function vLogin(err, mode) {
         : `<button class="btn btn-primary" id="eLogin">Se connecter</button>
            <button class="btn btn-ghost" id="eSignup">Créer un compte</button>`}
       <div style="text-align:center"><button class="linklike" id="eForgot">Mot de passe oublié ?</button></div>
-      <div class="login-pro">⭐ <b>Version complète — 100 DH</b> · à vie.</div>
+      <div class="login-pro"><b>Version complète — 100 DH</b> · à vie.</div>
     </div>
-    </div>`;
+    </div>
+    <section class="landing-feats">
+      <p class="hero-eyebrow">Dans l’app</p>
+      <h2 class="serif">Tout ce qu’il faut pour l’année — et pour le concours.</h2>
+      <ul class="feat-list">
+        <li><span class="feat-ic">${'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>'}</span><div><b>Flashcards par sujet</b><p>Navigation par discipline et chapitre, recherche instantanée, progression sauvegardée sujet par sujet.</p></div></li>
+        <li><span class="feat-ic">${'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>'}</span><div><b>Plan 32 semaines</b><p>Quatre phases — Acquisition, Approfondissement, Consolidation, Révision intensive — avec tes tâches semaine par semaine, synchronisées sur ton compte.</p></div></li>
+        <li><span class="feat-ic">${'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0V4zM7 6H4a1 1 0 0 0-1 1c0 2 1.5 3 3 3M17 6h3a1 1 0 0 1 1 1c0 2-1.5 3-3 3"/></svg>'}</span><div><b>Classement &amp; XP</b><p>+1 XP par carte étudiée, niveaux, série de jours. Tu vois exactement où tu en es.</p></div></li>
+      </ul>
+    </section>`;
+  /* --- carte démo : vraies cartes t0, tap pour retourner --- */
+  let demoPos = 0, demoFlipped = false;
+  const renderDemo = () => {
+    const c = DEMO_CARDS[demoPos];
+    $('#demoCount').textContent = `${demoPos + 1} / ${DEMO_CARDS.length}`;
+    $('#demoFront').innerHTML = `<span class="demo-tag">Anatomie · La région axillaire</span><span class="demo-q">${esc(c.q)}</span><span class="demo-hint">Touche pour la réponse →</span>`;
+    $('#demoBack').innerHTML = `<span class="demo-tag">Réponse</span><span class="demo-a">${esc(c.a)}</span>`;
+    $('#demoFront').hidden = demoFlipped;
+    $('#demoBack').hidden = !demoFlipped;
+    $('#demoCard').classList.toggle('flipped', demoFlipped);
+    $('#demoSrc').textContent = `Carte réelle — FMPF · Anatomie · sujet « La région axillaire » (t0), carte ${c.n}`;
+  };
+  const flipDemo = () => { demoFlipped = !demoFlipped; renderDemo(); };
+  $('#demoCard').onclick = flipDemo;
+  $('#demoCard').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipDemo(); } };
+  $('#demoNext').onclick = () => { demoPos = (demoPos + 1) % DEMO_CARDS.length; demoFlipped = false; renderDemo(); };
+  renderDemo();
+  /* --- choix de la faculté : une autre faculté = son propre site/compte --- */
+  $('#facSel').onchange = (e) => {
+    const f = FACULTIES.find(([code]) => code === e.target.value);
+    if (f && f[0] !== 'fmpf') location.href = 'https://' + f[2] + '/' + location.search;
+  };
   const showErr = (m) => { const e = $('#lerr'); e.style.display = 'block'; e.textContent = m; };
   $('#gBtn').onclick = async () => {
     const btn = $('#gBtn');
@@ -80,7 +153,7 @@ function vLogin(err, mode) {
       const c = creds(); if (!c) return;
       const pwd2 = $('#pwd2').value;
       if (c.pwd !== pwd2) { showErr('Les deux mots de passe ne correspondent pas.'); return; }
-      try { await createUserWithEmailAndPassword(auth, c.email, c.pwd); toast('Compte créé, bienvenue ! 🎉'); }
+      try { await createUserWithEmailAndPassword(auth, c.email, c.pwd); toast('Compte créé, bienvenue !'); }
       catch (e) { showErr(friendly(e)); }
     };
     $('#eBack').onclick = () => vLogin(null, 'login');
@@ -95,7 +168,7 @@ function vLogin(err, mode) {
   $('#eForgot').onclick = async () => {
     const email = $('#email').value.trim();
     if (!email) { showErr('Entre ton email pour recevoir le lien.'); return; }
-    try { await sendPasswordResetEmail(auth, email); toast('Lien envoyé par email ✉️'); }
+    try { await sendPasswordResetEmail(auth, email); toast('Lien envoyé par email'); }
     catch (e) { showErr(friendly(e)); }
   };
   const q = new URLSearchParams(location.search).get('err');
